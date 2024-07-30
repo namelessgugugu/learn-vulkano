@@ -8,7 +8,6 @@ use vulkano::device::Device;
 use vulkano::pipeline::layout::{PipelineLayout, PipelineLayoutCreateInfo};
 use vulkano::format::{Format, ClearValue};
 use vulkano::render_pass::RenderPass;
-use vulkano::single_pass_renderpass;
 use vulkano::render_pass::Subpass;
 use vulkano::shader::{ShaderModule, ShaderModuleCreateInfo};
 use vulkano::pipeline::{PipelineCreateFlags, PipelineShaderStageCreateInfo};
@@ -24,9 +23,13 @@ use vulkano::pipeline::graphics::subpass::PipelineSubpassType;
 use vulkano::image::view::ImageView;
 use vulkano::command_buffer::auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::command_buffer::{
-    CommandBufferUsage, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo
+    CommandBufferUsage, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo,
 };
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo};
+use vulkano::image::ImageLayout;
+use vulkano::render_pass::{
+    Framebuffer, FramebufferCreateInfo, RenderPassCreateInfo, AttachmentDescription,
+    AttachmentLoadOp, AttachmentStoreOp, AttachmentReference, SubpassDescription
+};
 
 use smallvec::SmallVec;
 
@@ -44,21 +47,33 @@ impl Renderer {
         PipelineLayout::new(device, create_info).expect("Fail to create pipeline layout.")
     }
     fn new_render_pass(device: Arc<Device>, format: Format) -> Arc<RenderPass> {
-        single_pass_renderpass!(
-            device,
-            attachments: {
-                image: {
-                    format: format,
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: Store,
-                },
-            },
-            pass: {
-                color: [image],       // Repeat the attachment name here.
-                depth_stencil: {},
-            },
-        ).expect("Fail to create render pass.")
+        let color_attachment = AttachmentDescription {
+            format: format,
+            load_op: AttachmentLoadOp::Clear,
+            store_op: AttachmentStoreOp::Store,
+            initial_layout: ImageLayout::Undefined,
+            final_layout: ImageLayout::PresentSrc,
+            ..Default::default()
+        };
+        let attachments = vec![color_attachment];
+        let color_attachment_ref = AttachmentReference {
+            attachment: 0,
+            layout: ImageLayout::ColorAttachmentOptimal,
+            ..Default::default()
+        };
+        let color_attachments = vec![Some(color_attachment_ref)];
+        let subpass_description = SubpassDescription {
+            color_attachments,
+            ..Default::default()
+        };
+        let subpasses = vec![subpass_description];
+        let create_info = RenderPassCreateInfo {
+            attachments,
+            subpasses,
+            ..Default::default()
+        };
+        RenderPass::new(device, create_info)
+            .expect("Fail to create render pass")
     }
     fn read_spirv_code(device: Arc<Device>, path: String) -> Arc<ShaderModule> {
         let mut handler = File::open(path).expect("Fail to open the spv file.");
