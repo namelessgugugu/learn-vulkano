@@ -91,8 +91,8 @@ impl Renderer {
     ) -> Arc<GraphicsPipeline> {
         let flags = PipelineCreateFlags::empty();
         
-        let vertex_shader = Self::read_spirv_code(device.clone(), String::from("E:\\namelessgugugu\\Projects\\vulkano\\shaders\\vert.spv"));
-        let fragment_shader = Self::read_spirv_code(device.clone(), String::from("E:\\namelessgugugu\\Projects\\vulkano\\shaders\\frag.spv"));
+        let vertex_shader = Self::read_spirv_code(device.clone(), String::from(".\\shaders\\vert.spv"));
+        let fragment_shader = Self::read_spirv_code(device.clone(), String::from(".\\shaders\\frag.spv"));
 
         let stages = {
             let vertex_shader_stage = PipelineShaderStageCreateInfo::new(

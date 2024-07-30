@@ -476,6 +476,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "learn-vulkano"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "smallvec",
+ "vulkano",
+ "winit",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1298,16 +1308,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81086c28be67a8759cd80cbb3c8f7b520e0874605fc5eb74d5a1c9c2d1878e79"
 dependencies = [
  "xml-rs",
-]
-
-[[package]]
-name = "vulkano"
-version = "0.1.0"
-dependencies = [
- "ahash",
- "smallvec",
- "vulkano 0.34.1",
- "winit",
 ]
 
 [[package]]
