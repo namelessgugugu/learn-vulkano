@@ -31,11 +31,13 @@ impl App {
             if current_info.is_some() { current_info.unwrap() }
             else { return false; }
         };
+        eprintln!("before creating cb");
         let command_buffer = renderer.record_command_buffer(
             resources,
             framework.swapchain_image_views[image_index as usize].clone(),
             framework.graphics_queue.queue_family_index()
         );
+        eprintln!("after creating cb");
         let render_finished = framework.execute_command_buffer(image_available, command_buffer);
         let presented = framework.present_image(render_finished, image_index);
         presented.flush().expect("Fail to flush gpu future.");
