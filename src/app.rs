@@ -31,6 +31,7 @@ impl App {
             if current_info.is_some() { current_info.unwrap() }
             else { return false; }
         };
+        eprintln!("image index: {image_index:?}");
         eprintln!("before creating cb");
         let command_buffer = renderer.record_command_buffer(
             resources,
@@ -39,8 +40,10 @@ impl App {
         );
         eprintln!("after creating cb");
         let render_finished = framework.execute_command_buffer(image_available, command_buffer);
+        render_finished.flush().expect("");
         let presented = framework.present_image(render_finished, image_index);
         presented.flush().expect("Fail to flush gpu future.");
+        framework.window.request_redraw();
         true
     }
 }

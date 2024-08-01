@@ -200,6 +200,20 @@ impl Framework {
         };
         Swapchain::new(device, surface, create_info).expect("Fail to create swapchain.")
     }
+    fn new_swapchain_image_views(format: Format, swapchain_images: &Vec<Arc<Image>>) -> Vec<Arc<ImageView>> {
+        swapchain_images.iter()
+            .map(|image| {
+                let subresource_range = ImageSubresourceRange::from_parameters(format, 1, 1);
+                let create_info = ImageViewCreateInfo {
+                    format,
+                    subresource_range,
+                    ..Default::default()
+                };
+                ImageView::new(image.clone(), create_info)
+                    .expect("Fail to create swapchain image views.")
+            })
+            .collect()
+    }
     pub fn new(event_loop: &ActiveEventLoop) -> Self {
         let window = Self::new_window(event_loop);
 
@@ -207,14 +221,19 @@ impl Framework {
             let library = Self::new_library();
 
             let enabled_layers = vec![String::from("VK_LAYER_KHRONOS_validation")];
-            let enabled_extensions = Surface::required_extensions(event_loop)
-                | InstanceExtensions { ext_debug_utils: true, ..Default::default() };
+            let enabled_extensions = InstanceExtensions { ext_debug_utils: true, ..Surface::required_extensions(event_loop) };
             let debug_utils_messengers = vec![debug::debug_printing_messenger()];
             Self::new_instance(library, enabled_layers, enabled_extensions, debug_utils_messengers)
         };
 
         let surface = Self::new_surface(instance.clone(), window.clone());
 
+        
+        let enabled_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..Default::default()
+        };
+        let enabled_features = Features::default();
         let physical_device = Self::select_physical_device(
             &instance,
             |physical_device| -> bool {
@@ -222,6 +241,7 @@ impl Framework {
                 && Self::select_present_queue_family(physical_device, &surface).is_some()
                 && Self::select_swapchain_format(physical_device, &surface).is_some()
                 && Self::select_swapchain_present_mode(physical_device, &surface).is_some()
+                && Self::physical_device_support(physical_device, &enabled_extensions, &enabled_features)
             }
         );
 
@@ -230,19 +250,12 @@ impl Framework {
                 .expect("[?]Fail to find graphics family index.");
             let present_queue_family_index = Self::select_present_queue_family(&physical_device, &surface)
                 .expect("[?]Fail to find present family index.");
+            eprintln!("{:?} {:?}", graphics_queue_family_index, present_queue_family_index);
             let unique_indices = HashSet::from([graphics_queue_family_index, present_queue_family_index]);
             let queue_create_infos = unique_indices
                 .iter()
                 .map(|index| QueueCreateInfo { queue_family_index: *index, ..Default::default() })
                 .collect();
-            let enabled_extensions = DeviceExtensions {
-                khr_swapchain: true,
-                ..Default::default()
-            };
-            let enabled_features = Features {
-                dynamic_rendering: true,
-                ..Default::default()
-            };
             let (device, queues) = Self::new_device(physical_device.clone(), queue_create_infos, enabled_extensions, enabled_features);
             let queues = queues.collect::<Vec<_>>();
             let retrieve_queue = |index: u32| -> Arc<Queue> {
@@ -274,21 +287,7 @@ impl Framework {
             Self::new_swapchain(device.clone(), surface.clone(), format, present_mode, extent, image_count)
         };
 
-        let swapchain_image_views = {
-            let format = swapchain.image_format();
-            swapchain_images.iter()
-                .map(|image| {
-                    let subresource_range = ImageSubresourceRange::from_parameters(format, 1, 1);
-                    let create_info = ImageViewCreateInfo {
-                        format,
-                        subresource_range,
-                        ..Default::default()
-                    };
-                    ImageView::new(image.clone(), create_info)
-                        .expect("Fail to create swapchain image views.")
-                })
-                .collect()
-        };
+        let swapchain_image_views = Self::new_swapchain_image_views(swapchain.image_format(), &swapchain_images);
 
         Framework {
             window,
@@ -316,7 +315,9 @@ impl Framework {
             };
             self.swapchain.recreate(create_info).expect("Fail to recreate swapchain.")
         };
+        let swapchain_image_views = Self::new_swapchain_image_views(swapchain.image_format(), &swapchain_images);
 
+        self.swapchain_image_views = swapchain_image_views;
         self.swapchain_images = swapchain_images;
         self.swapchain = swapchain;
         true
@@ -332,7 +333,7 @@ impl Framework {
         F: GpuFuture,
         C: 'static + PrimaryCommandBufferAbstract
     {
-        command_buffer.execute_after(before, self.graphics_queue.clone())
+        before.then_execute(self.graphics_queue.clone(), command_buffer)
             .expect("Fail to execute command buffer.")
     }
     pub fn present_image<F: GpuFuture>(&self, before: F, image_index: u32) -> PresentFuture<F> {
@@ -340,6 +341,6 @@ impl Framework {
             self.swapchain.clone(),
             image_index
         );
-        present(before, self.present_queue.clone(), swapchain_info)
+        before.then_swapchain_present(self.present_queue.clone(), swapchain_info)
     }
 }
