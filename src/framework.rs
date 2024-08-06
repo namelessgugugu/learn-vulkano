@@ -1,33 +1,43 @@
-use std::sync::Arc;
-use std::collections::HashSet;
-use std::cmp::max;
-
-use winit::event_loop::ActiveEventLoop;
-use winit::window::Window;
-
-use vulkano::library::VulkanLibrary;
-use vulkano::instance::debug::DebugUtilsMessengerCreateInfo;
-use vulkano::instance::{Instance, InstanceExtensions, InstanceCreateInfo};
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::{
-    Device, DeviceCreateInfo, Queue, QueueCreateInfo,
-    QueueFlags, DeviceExtensions, Features
+use std::{
+    sync::Arc,
+    collections::HashSet,
+    cmp::max
 };
-use vulkano::swapchain::{
-    ColorSpace, PresentMode, Surface, SurfaceCapabilities,
-    SurfaceInfo, Swapchain, SwapchainCreateInfo
+
+use winit::{
+    event_loop::ActiveEventLoop,
+    window::Window
 };
-use vulkano::format::Format;
-use vulkano::image::{Image, ImageUsage};
-use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::image::ImageSubresourceRange;
-use vulkano::swapchain::{SwapchainAcquireFuture, acquire_next_image, present, SwapchainPresentInfo, PresentFuture};
-use vulkano::sync::GpuFuture;
-use vulkano::command_buffer::{PrimaryCommandBufferAbstract, CommandBufferExecFuture};
+
+use vulkano::{
+    library::VulkanLibrary,
+    instance::{
+        Instance, InstanceExtensions, InstanceCreateInfo,
+        debug::DebugUtilsMessengerCreateInfo
+    },
+    device::{
+        Device, DeviceCreateInfo, Queue, QueueCreateInfo,
+        QueueFlags, DeviceExtensions, Features,
+        physical::PhysicalDevice
+    },
+    swapchain::{
+        ColorSpace, PresentMode, Surface, SurfaceCapabilities,
+        SurfaceInfo, Swapchain, SwapchainCreateInfo, SwapchainAcquireFuture,
+        acquire_next_image, SwapchainPresentInfo, PresentFuture
+    },
+    format::Format,
+    image::{
+        Image, ImageUsage,ImageSubresourceRange,
+        view::{ImageView, ImageViewCreateInfo}
+    },
+    sync::GpuFuture,
+    command_buffer::{
+        PrimaryCommandBufferAbstract, CommandBufferExecFuture
+    }
+};
 
 use crate::debug;
 
-#[derive(Debug)]
 pub struct Framework {
     pub window: Arc<Window>,
     pub instance: Arc<Instance>,
@@ -233,7 +243,9 @@ impl Framework {
             khr_swapchain: true,
             ..Default::default()
         };
-        let enabled_features = Features::default();
+        let enabled_features = Features {
+            ..Default::default()
+        };
         let physical_device = Self::select_physical_device(
             &instance,
             |physical_device| -> bool {
@@ -250,7 +262,6 @@ impl Framework {
                 .expect("[?]Fail to find graphics family index.");
             let present_queue_family_index = Self::select_present_queue_family(&physical_device, &surface)
                 .expect("[?]Fail to find present family index.");
-            eprintln!("{:?} {:?}", graphics_queue_family_index, present_queue_family_index);
             let unique_indices = HashSet::from([graphics_queue_family_index, present_queue_family_index]);
             let queue_create_infos = unique_indices
                 .iter()

@@ -1,40 +1,55 @@
-use std::sync::Arc;
-use std::fs::File;
-use std::io::Read;
-
-use ahash::HashSet;
-
-use vulkano::device::Device;
-use vulkano::pipeline::layout::{PipelineLayout, PipelineLayoutCreateInfo};
-use vulkano::format::{Format, ClearValue};
-use vulkano::render_pass::RenderPass;
-use vulkano::render_pass::Subpass;
-use vulkano::shader::{ShaderModule, ShaderModuleCreateInfo};
-use vulkano::pipeline::{PipelineCreateFlags, PipelineShaderStageCreateInfo};
-use vulkano::pipeline::graphics::{GraphicsPipeline, GraphicsPipelineCreateInfo};
-use vulkano::pipeline::graphics::vertex_input::VertexInputState;
-use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::graphics::rasterization::RasterizationState;
-use vulkano::pipeline::graphics::multisample::MultisampleState;
-use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
-use vulkano::pipeline::DynamicState;
-use vulkano::pipeline::graphics::subpass::PipelineSubpassType;
-use vulkano::image::view::ImageView;
-use vulkano::command_buffer::auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
-use vulkano::command_buffer::{
-    CommandBufferUsage, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo,
+use std::{
+    sync::Arc,
+    fs::File,
+    io::Read
 };
-use vulkano::image::ImageLayout;
-use vulkano::render_pass::{
-    Framebuffer, FramebufferCreateInfo, RenderPassCreateInfo, AttachmentDescription,
-    AttachmentLoadOp, AttachmentStoreOp, AttachmentReference, SubpassDescription
+
+use ahash::{HashSet, HashMap};
+
+use vulkano::{
+    device::Device,
+    pipeline::layout::{PipelineLayout, PipelineLayoutCreateInfo},
+    format::Format,
+    render_pass::{
+        RenderPass, Subpass, Framebuffer, FramebufferCreateInfo, RenderPassCreateInfo,
+        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, AttachmentReference,
+        SubpassDescription
+    },
+    shader::{ShaderModule, ShaderModuleCreateInfo},
+    pipeline::{
+        PipelineCreateFlags, PipelineShaderStageCreateInfo, DynamicState,
+        graphics::{
+            GraphicsPipeline, GraphicsPipelineCreateInfo,
+            vertex_input::{
+                VertexInputState, Vertex, VertexInputBindingDescription, VertexInputAttributeDescription
+            },
+            input_assembly::{InputAssemblyState, PrimitiveTopology},
+            viewport::{Viewport, ViewportState},
+            rasterization::{
+                RasterizationState, PolygonMode, FrontFace, CullMode
+            },
+            multisample::MultisampleState,
+            color_blend::{ColorBlendState, ColorBlendAttachmentState},
+            subpass::PipelineSubpassType
+        }
+    },
+    image::{
+        ImageLayout,
+        view::ImageView
+    },
+    command_buffer::{
+        CommandBufferUsage, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo,
+        auto::PrimaryAutoCommandBuffer
+    },
+    buffer::Subbuffer
 };
 
 use smallvec::SmallVec;
 
-use crate::resources::Resources;
-#[derive(Debug)]
+use crate::{
+    allocator::Allocator,
+    model::ColoredVertex
+};
 pub struct Renderer {
     pub pipeline_layout: Arc<PipelineLayout>,
     pub render_pass: Arc<RenderPass>,
@@ -47,49 +62,35 @@ impl Renderer {
         PipelineLayout::new(device, create_info).expect("Fail to create pipeline layout.")
     }
     fn new_render_pass(device: Arc<Device>, format: Format) -> Arc<RenderPass> {
-        // let color_attachment = AttachmentDescription {
-        //     format: format,
-        //     load_op: AttachmentLoadOp::Clear,
-        //     store_op: AttachmentStoreOp::Store,
-        //     initial_layout: ImageLayout::PresentSrc,
-        //     final_layout: ImageLayout::PresentSrc,
-        //     ..Default::default()
-        // };
-        // let attachments = vec![color_attachment];
-        // let color_attachment_ref = AttachmentReference {
-        //     attachment: 0,
-        //     layout: ImageLayout::ColorAttachmentOptimal,
-        //     ..Default::default()
-        // };
-        // let color_attachments = vec![Some(color_attachment_ref)];
-        // let subpass_description = SubpassDescription {
-        //     color_attachments,
-        //     ..Default::default()
-        // };
-        // let subpasses = vec![subpass_description];
-        // let create_info = RenderPassCreateInfo {
-        //     attachments,
-        //     subpasses,
-        //     ..Default::default()
-        // };
-        // RenderPass::new(device, create_info)
-        //     .expect("Fail to create render pass")
+        let color_attachment = AttachmentDescription {
+            format: format,
+            load_op: AttachmentLoadOp::Clear,
+            store_op: AttachmentStoreOp::Store,
+            initial_layout: ImageLayout::PresentSrc,
+            final_layout: ImageLayout::PresentSrc,
+            ..Default::default()
+        };
+        let attachments = vec![color_attachment];
+
+        let color_attachment_ref = AttachmentReference {
+            attachment: 0,
+            layout: ImageLayout::ColorAttachmentOptimal,
+            ..Default::default()
+        };
+        let color_attachments = vec![Some(color_attachment_ref)];
         
-        vulkano::single_pass_renderpass!(
-            device,
-            attachments: {
-                color: {
-                    format: format,
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: Store,
-                },
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {},
-            },
-        ).expect("Fail to create render pass.")
+        let subpass_description = SubpassDescription {
+            color_attachments,
+            ..Default::default()
+        };
+        let subpasses = vec![subpass_description];
+        let create_info = RenderPassCreateInfo {
+            attachments,
+            subpasses,
+            ..Default::default()
+        };
+        RenderPass::new(device, create_info)
+            .expect("Fail to create render pass")
     }
     fn read_spirv_code(device: Arc<Device>, path: String) -> Arc<ShaderModule> {
         let mut handler = File::open(path).expect("Fail to open the spv file.");
@@ -120,9 +121,42 @@ impl Renderer {
             SmallVec::from_vec(vec![vertex_shader_stage, fragment_shader_stage])
         };
 
-        let vertex_input_state = Some(
-            VertexInputState::new()
-        );
+        let vertex_input_state = {
+            let vertex_buffer_description = ColoredVertex::per_vertex();
+
+            let bindings = {
+                let vertex_binding_description = VertexInputBindingDescription {
+                    stride: vertex_buffer_description.stride,
+                    input_rate: vertex_buffer_description.input_rate
+                };
+                let mut current_map = HashMap::default();
+                current_map.insert(0, vertex_binding_description);
+                current_map
+            };
+
+            let attributes = {
+                let mut current_map = HashMap::default();
+                let input_arguments = [String::from("position"), String::from("color")];
+                for i in 0..(input_arguments.len()) {
+                    let vertex_member_info = vertex_buffer_description.members.get(&input_arguments[i]).unwrap();
+                    let vertex_attribute_description = VertexInputAttributeDescription {
+                        binding: 0,
+                        format: vertex_member_info.format,
+                        offset: vertex_member_info.offset as u32
+                    };
+                    current_map.insert(i as u32, vertex_attribute_description);
+                }
+                current_map
+            };
+
+            Some(
+                VertexInputState {
+                    bindings,
+                    attributes,
+                    ..Default::default()
+                }
+            )
+        };
 
         let input_assembly_state = Some(
             InputAssemblyState {
@@ -138,7 +172,12 @@ impl Renderer {
         );
 
         let rasterization_state = Some(
-            RasterizationState::default()
+            RasterizationState {
+                polygon_mode: PolygonMode::Fill,
+                front_face: FrontFace::CounterClockwise,
+                cull_mode: CullMode::Back,
+                ..Default::default()
+            }
         );
 
         let multisample_state = Some(
@@ -202,14 +241,18 @@ impl Renderer {
     }
     pub fn record_command_buffer(
         &self,
-        resources: &Resources,
-        output: Arc<ImageView>,
+        allocator: &Allocator,
         graphics_queue_family_index: u32,
+        vertex_buffer: Subbuffer<[ColoredVertex]>,
+        index_buffer: Subbuffer<[u32]>,
+        index_count: u32,
+        output: Arc<ImageView>,
     ) -> Arc<PrimaryAutoCommandBuffer> {
         let (render_area_extent, layers) = {
             let extent = output.image().extent();
             ([extent[0], extent[1]], extent[2])
         };
+
         let framebuffer = {
             let create_info = FramebufferCreateInfo {
                 attachments: vec![output.clone()],
@@ -219,10 +262,9 @@ impl Renderer {
             Framebuffer::new(self.render_pass.clone(), create_info)
                 .expect("Fail to create framebuffer.")
         };
+
         let clear_values = vec![
-            Some(
-                ClearValue::Float([1.0, 0.0, 0.0, 1.0])
-            )
+            Some([0.0, 0.0, 0.0, 1.0].into())
         ];
         let render_pass_begin_info = RenderPassBeginInfo {
             render_area_extent,
@@ -231,6 +273,7 @@ impl Renderer {
         };
         let subpass_begin_info = SubpassBeginInfo::default();
         let subpass_end_info = SubpassEndInfo::default();
+
         let viewports: SmallVec<[Viewport; 2]> = SmallVec::from_vec(
             vec![
                 Viewport {
@@ -240,16 +283,27 @@ impl Renderer {
             ]
         );
 
-        let mut builder = AutoCommandBufferBuilder::primary(
-            &*resources.command_buffer_allocator,
+        let mut builder = allocator.alloc_primary_builder(
             graphics_queue_family_index,
             CommandBufferUsage::OneTimeSubmit
-        ).expect("Fail to create command buffer builder.");
-        builder.begin_render_pass(render_pass_begin_info, subpass_begin_info).expect("Fail to begin rendering.")
-        .bind_pipeline_graphics(self.graphics_pipeline.clone()).expect("Fail to bind graphics pipeline.")
-        .set_viewport(0, viewports).expect("Fail to set viewport.")
-        .draw(3, 1, 0, 0).expect("Fail to draw vertices.")
-        .end_render_pass(subpass_end_info).expect("Fail to end rendering.");
+        );
+
+        builder
+        .begin_render_pass(render_pass_begin_info, subpass_begin_info)
+        .expect("Fail to begin rendering.")
+        .bind_pipeline_graphics(self.graphics_pipeline.clone())
+        .expect("Fail to bind graphics pipeline.")
+        .set_viewport(0, viewports)
+        .expect("Fail to set viewport.")
+        .bind_vertex_buffers(0, vertex_buffer)
+        .expect("Fail to bind vertex buffer")
+        .bind_index_buffer(index_buffer)
+        .expect("Fail to bind index buffer")
+        .draw_indexed(index_count, 1, 0, 0, 0)
+        .expect("Fail to draw vertices.")
+        .end_render_pass(subpass_end_info)
+        .expect("Fail to end rendering.");
+    
         builder.build().expect("Fail to build command buffer.")
     }
 }

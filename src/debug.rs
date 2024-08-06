@@ -8,8 +8,8 @@ pub fn debug_printing_messenger() -> DebugUtilsMessengerCreateInfo {
         eprintln!("validation layer: {:?}", callback_data.message);
     };
     let message_severity = DebugUtilsMessageSeverity::ERROR
-        | DebugUtilsMessageSeverity::WARNING;
-        // | DebugUtilsMessageSeverity::VERBOSE;
+        | DebugUtilsMessageSeverity::WARNING
+        | DebugUtilsMessageSeverity::VERBOSE;
     let message_type = DebugUtilsMessageType::GENERAL
         | DebugUtilsMessageType::VALIDATION
         | DebugUtilsMessageType::PERFORMANCE;
